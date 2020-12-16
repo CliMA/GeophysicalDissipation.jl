@@ -20,6 +20,10 @@ docs/site/
 # Temporary files
 *.swp
 
+# Data
+*.jld2
+*.nc
+
 # Movies
 *.gif
 *.mp4
