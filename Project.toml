@@ -1,0 +1,4 @@
+name = "GeophysicalDissipation"
+uuid = "631d5d2f-4fa6-4fbc-8b26-2b57e7a6c3a5"
+authors = ["Gregory Wagner <wagner.greg@gmail.com>"]
+version = "0.1.0"
