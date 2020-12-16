@@ -1,5 +1,8 @@
 module GeophysicalDissipation
 
-greet() = print("Hello World!")
+include("Bickley.jl")
+include("DiskTimeSerieses.jl")
+
+#include("StabilizingDissipations.jl")
 
 end # module
