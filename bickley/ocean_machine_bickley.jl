@@ -28,9 +28,10 @@ using GeophysicalDissipation.Bickley
 # Low-p assumption:
 effective_node_spacing(Ne, Np, Lx=4π) = Lx / (Ne * (Np + 1))
 
-function ocean_machine_prefix(Ne, Np, ν, Nfilter)
-    Nf = isnothing(Nfilter) ? Inf : Nfilter
-    return @sprintf("ocean_machine_bickley_Ne%d_Np%d_Nf%d_ν%.1e", Ne, Np, Nf, ν) :
+function ocean_machine_prefix(Ne, Np, Nfilter, ν)
+    return isnothing(Nfilter) ?
+        @sprintf("ocean_machine_bickley_Ne%d_Np%d_Nf∞_ν%.1e", Ne, Np, ν) :
+        @sprintf("ocean_machine_bickley_Ne%d_Np%d_Nf%d_ν%.1e", Ne, Np, Nfilter, ν)
 end
 
 function run(;
@@ -208,16 +209,17 @@ test_dissipation = StabilizingDissipation(minimum_node_spacing = effective_node_
 experiment_name = run(Ne=Ne, Np=Np, stabilizing_dissipation=test_dissipation)
 =#
 
-for DOF in (32, 64, 128, 256)
+for DOF in (128, 256)
     for Np in (2, 3, 4, 5, 6)
 
         Ne = round(Int, DOF / (Np+1))
-        experiment_name = run(Ne=Ne, Np=Np, safety=0.1)
+        experiment_name = run(Ne=Ne, Np=Np, array_type=CuArray)
         visualize(experiment_name)
 
         for Nfilter in 1:Np-1
-            Ne = round(Int, DOF / (Nfilter+1))
-            experiment_name = run(Ne=Ne, Np=Np, Nfilter=Nfilter, safety=0.1)
+            # Note: "effective" Np is Nfilter-1; so "effective DOF" is Ne * Nfilter.
+            Ne = round(Int, DOF / Nfilter)
+            experiment_name = run(Ne=Ne, Np=Np, Nfilter=Nfilter, array_type=CuArray)
             visualize(experiment_name)
         end
     end
