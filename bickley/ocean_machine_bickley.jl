@@ -28,7 +28,10 @@ using GeophysicalDissipation.Bickley
 # Low-p assumption:
 effective_node_spacing(Ne, Np, Lx=4π) = Lx / (Ne * (Np + 1))
 
-ocean_machine_prefix(Ne, Np, ν) = @sprintf("ocean_machine_bickley_Ne%d_Np%d_ν%.1e", Ne, Np, ν)
+function ocean_machine_prefix(Ne, Np, ν, Nfilter)
+    Nf = isnothing(Nfilter) ? Inf : Nfilter
+    return @sprintf("ocean_machine_bickley_Ne%d_Np%d_Nf%d_ν%.1e", Ne, Np, Nf, ν) :
+end
 
 function run(;
              Ne = 4,
@@ -37,12 +40,13 @@ function run(;
              time_step = 0.1 * effective_node_spacing(Ne, Np) / c,
              array_type = Array,
              output_time_interval = 2,
+             Nfilter = nothing,
              stabilizing_dissipation = nothing,
              stop_time = 200)
 
     ClimateMachine.Settings.array_type = array_type
 
-    experiment_name = ocean_machine_prefix(Ne, Np, ν)
+    experiment_name = ocean_machine_prefix(Ne, Np, Nfilter, ν)
 
     # Domain
 
@@ -73,6 +77,7 @@ function run(;
         turbulence_closure = (νʰ = ν, κʰ = ν, νᶻ = ν, κᶻ = ν),
         rusanov_wave_speeds = (cʰ = sqrt(g * domain.L.z), cᶻ = 1e-2),
         stabilizing_dissipation = stabilizing_dissipation,
+        state_filter_order = Nfilter,
         coriolis = (f₀ = 0, β = 0),
         buoyancy = (αᵀ = 0,),
         boundary_tags = ((0, 0), (1, 1), (1, 2)),
@@ -187,6 +192,7 @@ function visualize(experiment_name)
     return nothing
 end
 
+#=
 using GeophysicalDissipation.StabilizingDissipations: StabilizingDissipation
 
 Ne = 8
@@ -199,32 +205,20 @@ test_dissipation = StabilizingDissipation(minimum_node_spacing = effective_node_
                                           Δu = 1e-3,
                                           Δθ = 1e-3)
 
-#experiment_name = run(Ne=Ne, Np=Np, stabilizing_dissipation=test_dissipation)
-experiment_name = run(Ne=Ne, Np=Np, stabilizing_dissipation=nothing)
-visualize(experiment_name)
-
-#=
-for DOF in (32, 64, 128, 256, 512)
-    for Np in (2, 3, 4, 5, 6)
-        Ne = round(Int, DOF / (Np+1))
-        experiment_name = run(Ne=16, Np=3, safety=0.1)
-        visualize(experiment_name)
-    end
-end
-
-for DOF in (512,)
-    for Np in (2, 3, 4, 5, 6)
-        Ne = round(Int, DOF / (Np+1))
-        experiment_name = run(Ne=16, Np=3, safety=0.1, ν=1e-4)
-        visualize(experiment_name)
-    end
-end
-
-for DOF in (1024,)
-    for Np in (2, 3, 4, 5, 6)
-        Ne = round(Int, DOF / (Np+1))
-        experiment_name = run(Ne=16, Np=3, safety=0.1, ν=1e-5)
-        visualize(experiment_name)
-    end
-end
+experiment_name = run(Ne=Ne, Np=Np, stabilizing_dissipation=test_dissipation)
 =#
+
+for DOF in (32, 64, 128, 256)
+    for Np in (2, 3, 4, 5, 6)
+
+        Ne = round(Int, DOF / (Np+1))
+        experiment_name = run(Ne=Ne, Np=Np, safety=0.1)
+        visualize(experiment_name)
+
+        for Nfilter in 1:Np-1
+            Ne = round(Int, DOF / (Nfilter+1))
+            experiment_name = run(Ne=Ne, Np=Np, Nfilter=Nfilter, safety=0.1)
+            visualize(experiment_name)
+        end
+    end
+end
