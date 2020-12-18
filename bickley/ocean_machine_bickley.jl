@@ -20,7 +20,8 @@ using ClimateMachine.Ocean: JLD2Writer, OutputTimeSeries, write!
 using CLIMAParameters: AbstractEarthParameterSet, Planet
 
 struct NonDimensionalParameters <: AbstractEarthParameterSet end
-Planet.grav(::NonDimensionalParameters) = 10
+const g = 10
+Planet.grav(::NonDimensionalParameters) = g
 c = sqrt(Planet.grav(NonDimensionalParameters())) # gravity wave speed for unit depth
 
 using GeophysicalDissipation.Bickley
@@ -28,10 +29,10 @@ using GeophysicalDissipation.Bickley
 # Low-p assumption:
 effective_node_spacing(Ne, Np, Lx=4π) = Lx / (Ne * (Np + 1))
 
-function ocean_machine_prefix(Ne, Np, Nfilter, ν)
+function ocean_machine_prefix(Ne, Np, Nfilter, ν, τ)
     return isnothing(Nfilter) ?
-        @sprintf("ocean_machine_bickley_Ne%d_Np%d_Nf∞_ν%.1e", Ne, Np, ν) :
-        @sprintf("ocean_machine_bickley_Ne%d_Np%d_Nf%d_ν%.1e", Ne, Np, Nfilter, ν)
+        @sprintf("ocean_machine_bickley_Ne%d_Np%d_Nf∞_ν%.1e_τ%.1e", Ne, Np, ν, τ) :
+        @sprintf("ocean_machine_bickley_Ne%d_Np%d_Nf%d_ν%.1e_τ%.1e", Ne, Np, Nfilter, ν, τ)
 end
 
 function run(;
@@ -43,20 +44,18 @@ function run(;
              output_time_interval = 2,
              Nfilter = nothing,
              stabilizing_dissipation = nothing,
+             τ = sqrt(g),
              stop_time = 200)
 
     ClimateMachine.Settings.array_type = array_type
 
-    experiment_name = ocean_machine_prefix(Ne, Np, Nfilter, ν)
+    experiment_name = ocean_machine_prefix(Ne, Np, Nfilter, ν, τ)
 
     # Domain
 
     domain = RectangularDomain(Ne = (Ne, Ne, 1), Np = Np,
                                x = (-2π, 2π), y = (-2π, 2π), z = (0, 1),
                                periodicity = (true, true, false))
-
-    # Physical parameters:
-    g = Planet.grav(NonDimensionalParameters())
 
     # Non-dimensional parameters
     ϵ = 0.1 # Perturbation amplitude
@@ -76,7 +75,7 @@ function run(;
         initial_conditions = initial_conditions,
         parameters = NonDimensionalParameters(),
         turbulence_closure = (νʰ = ν, κʰ = ν, νᶻ = ν, κᶻ = ν),
-        rusanov_wave_speeds = (cʰ = sqrt(g * domain.L.z), cᶻ = 1e-2),
+        rusanov_wave_speeds = (cʰ = τ, cᶻ = 1e-2),
         stabilizing_dissipation = stabilizing_dissipation,
         state_filter_order = Nfilter,
         coriolis = (f₀ = 0, β = 0),
@@ -119,6 +118,7 @@ function run(;
 
     total_steps = ceil(Int, stop_time / time_step)
     @info @sprintf("Running a simulation of the instability of the Bickley jet (Δt=%.2e, steps=%d)", time_step, total_steps)
+    @info "Experiment name: $experiment_name"
 
     try
         result = ClimateMachine.invoke!(model.solver_configuration;
@@ -209,18 +209,20 @@ test_dissipation = StabilizingDissipation(minimum_node_spacing = effective_node_
 experiment_name = run(Ne=Ne, Np=Np, stabilizing_dissipation=test_dissipation)
 =#
 
-for DOF in (128, 256)
-    for Np in (2, 3, 4, 5, 6)
+for DOF in (64, 128, 256)
+    for Np in (2, 3, 4)
 
         Ne = round(Int, DOF / (Np+1))
-        experiment_name = run(Ne=Ne, Np=Np, array_type=CuArray)
+        experiment_name = run(Ne=Ne, Np=Np, τ=2*sqrt(g), array_type=CuArray)
         visualize(experiment_name)
 
+        #=
         for Nfilter in 1:Np-1
             # Note: "effective" Np is Nfilter-1; so "effective DOF" is Ne * Nfilter.
             Ne = round(Int, DOF / Nfilter)
             experiment_name = run(Ne=Ne, Np=Np, Nfilter=Nfilter, array_type=CuArray)
             visualize(experiment_name)
         end
+        =#
     end
 end
