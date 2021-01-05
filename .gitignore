@@ -30,3 +30,5 @@ docs/site/
 
 # Images
 *.png
+
+*.DS_Store

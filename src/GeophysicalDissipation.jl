@@ -1,9 +1,9 @@
 module GeophysicalDissipation
 
-using ClimateMachine
+#using ClimateMachine
 
 include("Bickley.jl")
 include("DiskTimeSerieses.jl")
-include("StabilizingDissipations.jl")
+#include("StabilizingDissipations.jl")
 
 end # module

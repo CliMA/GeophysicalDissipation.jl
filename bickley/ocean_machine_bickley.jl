@@ -12,6 +12,7 @@ using ClimateMachine.Ocean
 using ClimateMachine.Ocean.Domains
 using ClimateMachine.Ocean.Fields
 
+using ClimateMachine.DGMethods.NumericalFluxes
 using ClimateMachine.Mesh.Grids: DiscontinuousSpectralElementGrid
 using ClimateMachine.GenericCallbacks: EveryXSimulationTime
 using ClimateMachine.GenericCallbacks: EveryXSimulationSteps
@@ -24,7 +25,13 @@ const g = 10
 Planet.grav(::NonDimensionalParameters) = g
 c = sqrt(Planet.grav(NonDimensionalParameters())) # gravity wave speed for unit depth
 
+using GeophysicalDissipation
 using GeophysicalDissipation.Bickley
+
+# Because we can't use ClimateMachine inside GeophysicalDissipation for some reason...
+include(joinpath(GeophysicalDissipation |> pathof |> dirname, "PenalizedNumericalFluxes.jl"))
+
+using .PenalizedNumericalFluxes: ConstantPenalization, AbstractPenalizedNumericalFlux
 
 # Low-p assumption:
 effective_node_spacing(Ne, Np, Lx=4π) = Lx / (Ne * (Np + 1))
@@ -35,19 +42,16 @@ function ocean_machine_prefix(Ne, Np, Nfilter, ν, τ)
         @sprintf("ocean_machine_bickley_Ne%d_Np%d_Nf%d_ν%.1e_τ%.1e", Ne, Np, Nfilter, ν, τ)
 end
 
-function run(;
-             Ne = 4,
-             Np = 4,
-             ν = 0,
-             time_step = 0.1 * effective_node_spacing(Ne, Np) / c,
-             array_type = Array,
-             output_time_interval = 2,
-             Nfilter = nothing,
+function run(; Ne = 4, Np = 4, Nfilter = nothing, ν = 0, array_type = Array,
+             τ = 10.0,
+             time_step = 0.01 * effective_node_spacing(Ne, Np) / max(c, τ),
              stabilizing_dissipation = nothing,
-             τ = sqrt(g),
+             output_time_interval = 2,
              stop_time = 200)
 
     ClimateMachine.Settings.array_type = array_type
+
+    @show time_step
 
     experiment_name = ocean_machine_prefix(Ne, Np, Nfilter, ν, τ)
 
@@ -69,14 +73,22 @@ function run(;
 
     initial_conditions = InitialConditions(u=uᵢ, v=vᵢ, θ=θᵢ)
 
+    numerical_fluxes = (
+                        #first_order = CentralNumericalFluxFirstOrder(),
+                        #first_order = RusanovNumericalFlux(),
+                        first_order = ConstantPenalization(τ),
+                        second_order = CentralNumericalFluxSecondOrder(),
+                        gradient = CentralNumericalFluxGradient(),
+                       )
+
     model = Ocean.HydrostaticBoussinesqSuperModel(
         domain = domain,
         time_step = time_step,
         initial_conditions = initial_conditions,
         parameters = NonDimensionalParameters(),
         turbulence_closure = (νʰ = ν, κʰ = ν, νᶻ = ν, κᶻ = ν),
-        rusanov_wave_speeds = (cʰ = τ, cᶻ = 1e-2),
         stabilizing_dissipation = stabilizing_dissipation,
+        numerical_fluxes = numerical_fluxes,
         state_filter_order = Nfilter,
         coriolis = (f₀ = 0, β = 0),
         buoyancy = (αᵀ = 0,),
@@ -194,7 +206,8 @@ function visualize(experiment_name)
 end
 
 #=
-using GeophysicalDissipation.StabilizingDissipations: StabilizingDissipation
+include(joinpath(GeophysicalDissipation |> pathof |> dirname, "StabilizingDissipations.jl"))
+using .StabilizingDissipations: StabilizingDissipation
 
 Ne = 8
 Np = 3
@@ -209,6 +222,10 @@ test_dissipation = StabilizingDissipation(minimum_node_spacing = effective_node_
 experiment_name = run(Ne=Ne, Np=Np, stabilizing_dissipation=test_dissipation)
 =#
 
+experiment_name = run(Ne=7, Np=4)
+visualize(experiment_name)
+
+#=
 for DOF in (64, 128, 256)
     for Np in (2, 3, 4)
 
@@ -216,13 +233,12 @@ for DOF in (64, 128, 256)
         experiment_name = run(Ne=Ne, Np=Np, τ=2*sqrt(g), array_type=CuArray)
         visualize(experiment_name)
 
-        #=
         for Nfilter in 1:Np-1
             # Note: "effective" Np is Nfilter-1; so "effective DOF" is Ne * Nfilter.
             Ne = round(Int, DOF / Nfilter)
             experiment_name = run(Ne=Ne, Np=Np, Nfilter=Nfilter, array_type=CuArray)
             visualize(experiment_name)
         end
-        =#
     end
 end
+=#
